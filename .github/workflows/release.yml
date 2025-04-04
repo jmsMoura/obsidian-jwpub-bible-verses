@@ -28,7 +28,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir ${{ github.workspace }}/release
-          cp main.js manifest.json ${{ github.workspace }}/release
+          cp main.js manifest.json README.md ${{ github.workspace }}/release
+          if [ -f styles.css ]; then
+            cp styles.css ${{ github.workspace }}/release
+          fi
+          cd ${{ github.workspace }}/release
+          zip -r jwpub-bible-verses-${{ github.ref_name }}.zip .
           
       - name: Upload release artifacts
         uses: actions/upload-artifact@v3
@@ -44,4 +49,7 @@ jobs:
           prerelease: false
           files: |
             ${{ github.workspace }}/release/main.js
-            ${{ github.workspace }}/release/manifest.json 
+            ${{ github.workspace }}/release/manifest.json
+            ${{ github.workspace }}/release/README.md
+            ${{ github.workspace }}/release/jwpub-bible-verses-${{ github.ref_name }}.zip
+            ${{ github.workspace }}/release/styles.css 
