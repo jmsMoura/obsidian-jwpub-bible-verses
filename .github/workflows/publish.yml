@@ -1,0 +1,74 @@
+name: Publish to Obsidian
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18.x'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Build plugin
+        run: npm run build
+        
+      - name: Create plugin release files
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir ${{ github.workspace }}/release
+          cp main.js manifest.json README.md ${{ github.workspace }}/release
+          cd ${{ github.workspace }}/release
+          zip -r jwpub-bible-verses-${{ github.ref_name }}.zip .
+      
+      - name: Submit to Obsidian Community Plugins
+        if: startsWith(github.ref, 'refs/tags/') && github.repository == 'jmsMoura/obsidian-jwpub-bible-verses'
+        env:
+          OBSIDIAN_TOKEN: ${{ secrets.OBSIDIAN_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          PLUGIN_ID=$(grep '"id"' manifest.json | cut -d'"' -f4)
+          echo "Plugin ID: $PLUGIN_ID"
+          echo "Version: $VERSION"
+          
+          # Structure for the submission
+          echo "Creating submission data for Obsidian Community Plugins"
+          cat > submission.json << EOL
+          {
+            "id": "$PLUGIN_ID",
+            "name": "$(grep '"name"' manifest.json | cut -d'"' -f4)",
+            "author": "$(grep '"author"' manifest.json | cut -d'"' -f4)",
+            "version": "${VERSION#v}",
+            "description": "$(grep '"description"' manifest.json | cut -d'"' -f4)",
+            "isDesktopOnly": $(grep '"isDesktopOnly"' manifest.json | cut -d':' -f2 | tr -d ' ,'),
+            "minAppVersion": "$(grep '"minAppVersion"' manifest.json | cut -d'"' -f4)",
+            "repo": "$REPO"
+          }
+          EOL
+          
+          # If we have an OBSIDIAN_TOKEN, submit to Obsidian plugins registry
+          if [ -n "$OBSIDIAN_TOKEN" ]; then
+            echo "Submitting to Obsidian plugin registry"
+            # This is a placeholder - Obsidian doesn't have an official API for submissions
+            # Actual submission would typically be a PR to obsidian-releases repository
+            RELEASE_URL="https://github.com/$REPO/releases/tag/$VERSION"
+            echo "Release is available at: $RELEASE_URL"
+            echo "To submit this to Obsidian, create a PR to obsidian-releases repository"
+          else
+            echo "OBSIDIAN_TOKEN not found. Skipping submission to Obsidian."
+            echo "To manually submit, create a PR to obsidian-releases repository."
+          fi 
