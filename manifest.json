@@ -1,9 +1,9 @@
 {
   "id": "jwpub-bible-verses",
   "name": "JW Bible Verses",
-  "version": "1.0.0",
+  "version": "1.1.9",
   "minAppVersion": "0.15.0",
-  "description": "Insert and keep up-to-date Bible verses from jw.org in your Obsidian notes",
+  "description": "Insert and keep up-to-date Bible verses from jw.org in your Obsidian notes.",
   "author": "JW Bible Verses Team",
   "authorUrl": "https://github.com/jmsMoura/obsidian-jwpub-bible-verses",
   "isDesktopOnly": false

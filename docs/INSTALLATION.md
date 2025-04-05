@@ -10,7 +10,7 @@ This guide provides step-by-step instructions for installing the JW Bible Verses
 ## Method 1: Manual Installation (Recommended)
 
 1. **Download the Plugin**
-   - Download the latest release ZIP file (`jw-bible-verses-<version>.zip`) from the [Releases page](https://github.com/yourusername/jwpub-bible-verses/releases)
+   - Download the latest release ZIP file (`jwpub-bible-verses-v1.1.0.zip` or newer) from the [Releases page](https://github.com/jmsMoura/obsidian-jwpub-bible-verses/releases)
 
 2. **Locate Your Plugins Folder**
    - Open Obsidian
@@ -50,7 +50,7 @@ If you have the BRAT (Beta Reviewer's Auto-update Tool) plugin installed, you ca
    - Open Obsidian Settings
    - Go to "BRAT" in the left sidebar
    - Click "Add Beta Plugin"
-   - Enter the repository URL: `https://github.com/yourusername/jwpub-bible-verses`
+   - Enter the repository URL: `https://github.com/jmsMoura/obsidian-jwpub-bible-verses`
    - Click "Add Plugin"
 
 3. **Enable the Plugin**
@@ -64,7 +64,7 @@ After installation, it's recommended to configure the plugin for your language:
 
 1. Open Obsidian Settings
 2. Go to "JW Bible Verses" in the left sidebar
-3. Set your preferred language code (e.g., "E" for English, "PT" for Portuguese)
+3. Set your preferred language code (e.g., "E" for English, "T" for Portuguese)
 4. Click "Fetch Book Names" to download book names in your selected language
 5. (Optional) Customize other settings to your liking
 
@@ -77,4 +77,4 @@ If you encounter any issues during installation:
 - **Cannot Enable Plugin**: Try restarting Obsidian
 - **Missing Icons**: Check if the plugin is enabled in Settings > Community Plugins
 
-For additional help, refer to the [README](README.md) or contact the developer. 
+For additional help, refer to the [main documentation](README.md) or contact the developer. 

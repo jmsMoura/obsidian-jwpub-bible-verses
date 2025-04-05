@@ -11,6 +11,7 @@ There are two ways to insert a Bible verse:
 1. **Using the Ribbon Icon**:
    - Click on the book icon in the left ribbon sidebar
    - Enter a Bible reference in the format "Book Chapter:Verse" (e.g., "John 3:16")
+   - Or enter a verse range like "John 1:1-3" or "Matthew 5:3-10"
    - Click "Insert" to add the verse at your cursor position
 
 2. **Using the Command Palette**:
@@ -22,6 +23,7 @@ There are two ways to insert a Bible verse:
 The inserted verse will include:
 - A link to the verse on JW.org
 - The full text of the verse
+- For verse ranges, each verse will be displayed with its verse number
 - (Optional) Custom formatting based on your settings
 
 ### Converting Existing References
@@ -63,7 +65,30 @@ The plugin recognizes a wide variety of Bible reference formats:
   - "João 3:16" (Portuguese), "Gênesis 1:3" (Portuguese with diacritics)
   
 - **References with Ranges**: 
-  - "Matthew 5:3-10", "John 3:16,36"
+  - "Matthew 5:3-10", "John 3:16-18", "João 1:1-3"
+
+### Working with Verse Ranges
+
+The plugin now supports verse ranges for a more complete Bible study experience:
+
+1. **Entering Verse Ranges**:
+   - When inserting a Bible verse, simply use the format "Book Chapter:StartVerse-EndVerse"
+   - Examples: "John 1:1-3", "Matthew 5:3-10", "Revelation 21:3-5"
+
+2. **What Happens**:
+   - The plugin creates a URL linking to the entire verse range on JW.org
+   - It fetches each verse individually and combines them
+   - Each verse is shown with its verse number for clarity
+   - Example output for "John 1:1-3":
+     ```
+     [John 1:1-3](https://www.jw.org/finder?wtlocale=E&bible=43001001-43001003)
+     
+     "1 In the beginning was the Word, and the Word was with God, and the Word was God. 2 This one was in the beginning with God. 3 All things came into existence through him, and apart from him not even one thing came into existence."
+     ```
+
+3. **Converting Existing Range References**:
+   - The plugin will also detect and convert verse ranges in your existing notes
+   - Just use the "Convert Bible References" feature
 
 ### Working with Multiple Languages
 
@@ -118,7 +143,7 @@ You can include Bible reference patterns in your templates:
 
 ```
 ## Daily Scripture
-[[INSERT SCRIPTURE HERE - e.g., John 3:16]]
+[[INSERT SCRIPTURE HERE - e.g., John 3:16 or Matthew 5:3-10]]
 ```
 
 Later, replace the placeholder with a real reference and use the conversion feature.
@@ -127,9 +152,9 @@ Later, replace the placeholder with a real reference and use the conversion feat
 
 For Bible study notes, try this workflow:
 
-1. Take notes using regular Bible references:
+1. Take notes using regular Bible references and ranges:
    ```
-   Today I studied John 3:16 and Romans 5:8. These verses show God's love...
+   Today I studied John 3:16 and Romans 5:8-10. These verses show God's love...
    ```
 
 2. Run the "Convert Bible References" command to convert all references at once
@@ -140,9 +165,9 @@ For Bible study notes, try this workflow:
    
    "For God loved the world so much that he gave his only-begotten Son, so that everyone exercising faith in him might not be destroyed but have everlasting life."
    
-   and [Romans 5:8](https://www.jw.org/finder?wtlocale=E&bible=45005008)
+   and [Romans 5:8-10](https://www.jw.org/finder?wtlocale=E&bible=45005008-45005010)
    
-   "But God recommends his own love to us in that, while we were yet sinners, Christ died for us."
+   "8 But God recommends his own love to us in that, while we were yet sinners, Christ died for us. 9 Much more, then, since we have now been declared righteous by his blood, will we be saved through him from wrath. 10 For if when we were enemies we became reconciled to God through the death of his Son, how much more we will be saved by his life, now that we have become reconciled."
    
    These verses show God's love...
    ```
@@ -153,7 +178,7 @@ For Bible study notes, try this workflow:
 
 If a reference isn't converting:
 
-1. Check the format - it should match standard Bible reference format (Book Chapter:Verse)
+1. Check the format - it should match standard Bible reference format (Book Chapter:Verse or Book Chapter:Verse-Verse)
 2. For languages with diacritics, ensure the book name matches the official JW.org spelling
 3. Try using the "Fetch Book Names" button to update book names database
 
@@ -174,4 +199,4 @@ For non-English languages:
 
 ## Need More Help?
 
-Refer to the [README](README.md) or [Installation Guide](INSTALLATION.md) for more information. 
+Refer to the [main documentation](README.md) or [Installation Guide](INSTALLATION.md) for more information. 

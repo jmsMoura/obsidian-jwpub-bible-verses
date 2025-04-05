@@ -18,19 +18,22 @@ interface JWPubPluginSettings {
 
 const DEFAULT_SETTINGS: JWPubPluginSettings = {
   language: 'E', // Default to English
-  autoUpdate: false,
-  updateInterval: 30,
-  insertLinkOnly: false, // Default to including verse content
-  linkPrefix: '', // No prefix for link by default
-  linkSuffix: '', // No suffix for link by default
-  versePrefix: '"', // Quote mark prefix for verse by default
-  verseSuffix: '"', // Quote mark suffix for verse by default
-  customBookNames: {}, // Empty by default - will use standard names
-  standardAbbreviations: {}, // Empty by default - will use default abbreviations
-  alternateAbbreviations: {}, // Empty by default - will use default abbreviations
-  localizedBookNames: {}, // Empty by default - will fetch from JW.org as needed
-  lastLanguageUpdate: {} // Empty by default - will track when names were last updated
-}
+  autoUpdate: true,
+  updateInterval: 14, // days
+  insertLinkOnly: false, // Default to inserting verses
+  linkPrefix: '',
+  linkSuffix: '',
+  versePrefix: '',
+  verseSuffix: '',
+  customBookNames: {},
+  standardAbbreviations: {},
+  alternateAbbreviations: {},
+  localizedBookNames: {},
+  lastLanguageUpdate: {}
+};
+
+// Define the default version of the plugin
+export const VERSION = "1.1.8";
 
 // Bible service to handle references and fetching
 class BibleService {
@@ -257,8 +260,9 @@ class BibleService {
     
     const chapter = chapterVerseMatch[1];
     const verse = chapterVerseMatch[2];
+    const endVerse = chapterVerseMatch[3]; // Extract end verse if it exists
     
-    console.log(`Extracted chapter: ${chapter}, verse: ${verse}`);
+    console.log(`Extracted chapter: ${chapter}, verse: ${verse}${endVerse ? `, end verse: ${endVerse}` : ''}`);
     
     // Format: BBCCCVVV (book, chapter, verse) - e.g., 40001001 for Matthew 1:1
     const paddedBookNumber = bookNumber.toString().padStart(2, '0');
@@ -267,6 +271,12 @@ class BibleService {
     
     const finalCode = `${paddedBookNumber}${paddedChapter}${paddedVerse}`;
     console.log(`Generated reference code: ${finalCode}`);
+    
+    // If we have an end verse, include it in the code
+    if (endVerse) {
+      const paddedEndVerse = endVerse.padStart(3, '0');
+      return `${finalCode}-${paddedBookNumber}${paddedChapter}${paddedEndVerse}`;
+    }
     
     return finalCode;
   }
@@ -277,15 +287,37 @@ class BibleService {
    * @returns Full JW.org URL to fetch the Bible verse
    */
   generateUrl(referenceCode: string): string {
-    // Extract book number to check if it's one of the first 9 books
-    const bookNumber = parseInt(referenceCode.substring(0, 2));
+    // Check if the reference code contains a range (indicated by a hyphen)
+    const isRange = referenceCode.includes('-');
     
-    // For books 1-9, remove the leading zero in the URL
-    const urlReferenceCode = bookNumber <= 9 
-      ? `${bookNumber}${referenceCode.substring(2)}` 
-      : referenceCode;
+    if (isRange) {
+      // Split the range into start and end codes
+      const [startCode, endCode] = referenceCode.split('-');
       
-    return `https://www.jw.org/finder?wtlocale=${this.settings.language}&bible=${urlReferenceCode}`;
+      // Extract book number from the start code
+      const bookNumber = parseInt(startCode.substring(0, 2));
+      
+      // For books 1-9, remove the leading zero in the URL
+      const urlStartCode = bookNumber <= 9 
+        ? `${bookNumber}${startCode.substring(2)}` 
+        : startCode;
+      
+      const urlEndCode = bookNumber <= 9 
+        ? `${bookNumber}${endCode.substring(2)}` 
+        : endCode;
+      
+      return `https://www.jw.org/finder?wtlocale=${this.settings.language}&bible=${urlStartCode}-${urlEndCode}`;
+    } else {
+      // Extract book number to check if it's one of the first 9 books
+      const bookNumber = parseInt(referenceCode.substring(0, 2));
+      
+      // For books 1-9, remove the leading zero in the URL
+      const urlReferenceCode = bookNumber <= 9 
+        ? `${bookNumber}${referenceCode.substring(2)}` 
+        : referenceCode;
+        
+      return `https://www.jw.org/finder?wtlocale=${this.settings.language}&bible=${urlReferenceCode}`;
+    }
   }
   
   /**
@@ -295,16 +327,38 @@ class BibleService {
    */
   async fetchVerse(referenceCode: string): Promise<{text: string, reference: string} | null> {
     try {
-      // Extract the book, chapter, and verse from the reference code
-      const bookNumber = parseInt(referenceCode.substring(0, 2));
-      const chapter = parseInt(referenceCode.substring(2, 5)).toString();
-      const verse = parseInt(referenceCode.substring(5, 8)).toString();
-      const book = this.getBookNameFromCode(bookNumber.toString().padStart(2, '0'));
-      const formattedReference = `${book} ${chapter}:${verse}`;
+      // Check if this is a range reference
+      const isRange = referenceCode.includes('-');
+      let bookNumber, chapter, verse, endVerse, book, formattedReference;
       
-      console.log(`Fetching verse: ${formattedReference} with code ${referenceCode}`);
+      if (isRange) {
+        // Split the range into start and end codes
+        const [startCode, endCode] = referenceCode.split('-');
+        
+        // Extract details from the start code
+        bookNumber = parseInt(startCode.substring(0, 2));
+        chapter = parseInt(startCode.substring(2, 5)).toString();
+        verse = parseInt(startCode.substring(5, 8)).toString();
+        
+        // Extract the end verse from the end code
+        endVerse = parseInt(endCode.substring(5, 8)).toString();
+        
+        book = this.getBookNameFromCode(bookNumber.toString().padStart(2, '0'));
+        formattedReference = `${book} ${chapter}:${verse}-${endVerse}`;
+        
+        console.log(`Fetching verse range: ${formattedReference} with code ${referenceCode}`);
+      } else {
+        // Extract the book, chapter, and verse from the reference code
+        bookNumber = parseInt(referenceCode.substring(0, 2));
+        chapter = parseInt(referenceCode.substring(2, 5)).toString();
+        verse = parseInt(referenceCode.substring(5, 8)).toString();
+        book = this.getBookNameFromCode(bookNumber.toString().padStart(2, '0'));
+        formattedReference = `${book} ${chapter}:${verse}`;
+        
+        console.log(`Fetching verse: ${formattedReference} with code ${referenceCode}`);
+      }
       
-      // First try the finder URL for the specific verse
+      // First try the finder URL for the specific verse or verse range
       const finderUrl = this.generateUrl(referenceCode);
       console.log(`Using URL: ${finderUrl}`);
       
@@ -349,7 +403,11 @@ class BibleService {
             const redirectHtml = redirectResponse.text;
             console.log(`Received redirected HTML, length: ${redirectHtml.length}`);
             
-            return this.extractVerseFromHtml(redirectHtml, referenceCode, formattedReference, bookNumber, verse);
+            if (isRange && endVerse) {
+              return this.extractVerseRangeFromHtml(redirectHtml, referenceCode, formattedReference, bookNumber, verse, endVerse);
+            } else {
+              return this.extractVerseFromHtml(redirectHtml, referenceCode, formattedReference, bookNumber, verse);
+            }
             
           } catch (error) {
             console.error(`Error following redirect: ${error}`);
@@ -358,7 +416,11 @@ class BibleService {
         }
         
         // If we didn't follow a redirect or redirect request failed, use the original HTML
-        return this.extractVerseFromHtml(html, referenceCode, formattedReference, bookNumber, verse);
+        if (isRange && endVerse) {
+          return this.extractVerseRangeFromHtml(html, referenceCode, formattedReference, bookNumber, verse, endVerse);
+        } else {
+          return this.extractVerseFromHtml(html, referenceCode, formattedReference, bookNumber, verse);
+        }
         
       } catch (error) {
         console.error(`Error accessing URL: ${error}`);
@@ -370,6 +432,220 @@ class BibleService {
     } catch (error) {
       console.error(`Error in fetchVerse: ${error}`);
       return null;
+    }
+  }
+  
+  /**
+   * Extract a range of verses from HTML content
+   * @param html HTML content to extract verses from
+   * @param referenceCode Bible reference code
+   * @param formattedReference Formatted reference string
+   * @param bookNumber Bible book number
+   * @param startVerse Starting verse number
+   * @param endVerse Ending verse number
+   * @returns Extracted verses or error message
+   */
+  private extractVerseRangeFromHtml(
+    html: string, 
+    referenceCode: string, 
+    formattedReference: string,
+    bookNumber: number,
+    startVerse: string,
+    endVerse: string
+  ): {text: string, reference: string} {
+    try {
+      console.log(`Extracting verse range: ${formattedReference} (${startVerse}-${endVerse})`);
+      
+      // Extract the chapter from the reference code
+      const chapter = referenceCode.split('-')[0].substring(2, 5);
+      
+      // Create an array to store all verse texts
+      const verses: string[] = [];
+      
+      // Check if this is a single verse range (e.g., Psalms 23:1-1)
+      const isSingleVerse = startVerse === endVerse;
+      
+      // Check if this is a Psalms/Salmos verse - needs special handling
+      const isPsalmsVerse = bookNumber === 19;
+      
+      // Method 1: Attempt to extract each verse individually using the verse ID pattern
+      for (let verseNum = parseInt(startVerse); verseNum <= parseInt(endVerse); verseNum++) {
+        // Create the reference code for this individual verse
+        const paddedVerse = verseNum.toString().padStart(3, '0');
+        const verseReferenceCode = `${referenceCode.split('-')[0].substring(0, 5)}${paddedVerse}`;
+        
+        // Create the HTML verse ID
+        const htmlVerseId = `v${verseReferenceCode}`;
+        
+        console.log(`Looking for verse ID: ${htmlVerseId}`);
+        
+        // Find where this verse starts in the HTML
+        const verseStartPattern = new RegExp(`<span class="verse" id="${htmlVerseId}">`);
+        const verseStartMatch = html.match(verseStartPattern);
+        
+        if (verseStartMatch && verseStartMatch.index !== undefined) {
+          // Look for the next verse tag or the end of chapter marker
+          const nextVersePattern = /<span class="verse" id="v[0-9]+"|<div class="chapterContent/;
+          const remainingHtml = html.substring(verseStartMatch.index + verseStartMatch[0].length);
+          const nextVerseMatch = remainingHtml.match(nextVersePattern);
+          
+          let verseHtml;
+          if (nextVerseMatch && nextVerseMatch.index !== undefined) {
+            // Extract everything between this verse start and the next verse or chapter end
+            verseHtml = remainingHtml.substring(0, nextVerseMatch.index);
+          } else {
+            // If no next verse found, take all remaining HTML after the verse start
+            verseHtml = remainingHtml;
+          }
+          
+          // Clean the HTML to get only the text content
+          let cleanedText = isPsalmsVerse ? 
+            this.cleanPsalmsText(verseHtml) : 
+            this.cleanHtmlFragment(verseHtml);
+          
+          if (cleanedText.trim()) {
+            // Only include verse numbers if it's not a single verse and we have multiple verses to add
+            if (isSingleVerse || parseInt(startVerse) === parseInt(endVerse)) {
+              // For single verse, just remove any verse number that might be there
+              verses.push(cleanedText.trim().replace(/^\d+\s+/, ''));
+            } else {
+              // For multiple verses, add the verse number with backticks
+              // First check if the text already starts with this verse number
+              const verseNumPattern = new RegExp(`^${verseNum}\\s+`);
+              if (verseNumPattern.test(cleanedText.trim())) {
+                // Replace existing number with backtick-wrapped version
+                verses.push(cleanedText.trim().replace(
+                  new RegExp(`^${verseNum}\\s+`), 
+                  `\`${verseNum}\` `
+                ));
+              } else {
+                // Add the verse number with backticks since it's not already there
+                verses.push(`\`${verseNum}\` ${cleanedText.trim()}`);
+              }
+            }
+            
+            console.log(`Found verse ${verseNum}: ${cleanedText.substring(0, 50)}...`);
+          }
+        } else {
+          console.log(`Could not find verse ID ${htmlVerseId} in HTML`);
+          
+          // Try extracting this verse using the single verse extraction method
+          const singleVerseResult = this.extractVerseFromHtml(
+            html, 
+            verseReferenceCode, 
+            `${formattedReference.split(':')[0]}:${verseNum}`, 
+            bookNumber, 
+            verseNum.toString()
+          );
+          
+          if (singleVerseResult && !singleVerseResult.text.includes("Could not extract verse content")) {
+            let extractedText = singleVerseResult.text;
+            
+            // Only include verse numbers if it's a multiple verse range
+            if (isSingleVerse || parseInt(startVerse) === parseInt(endVerse)) {
+              // For single verse, remove any verse number that might be there
+              verses.push(extractedText.replace(/^\d+\s+/, ''));
+            } else {
+              // For multiple verses, add the verse number with backticks
+              // First check if the text already starts with this verse number
+              const verseNumPattern = new RegExp(`^${verseNum}\\s+`);
+              if (verseNumPattern.test(extractedText)) {
+                // Replace existing number with backtick-wrapped version
+                verses.push(extractedText.replace(
+                  new RegExp(`^${verseNum}\\s+`), 
+                  `\`${verseNum}\` `
+                ));
+              } else {
+                // Add the verse number with backticks since it's not already there
+                verses.push(`\`${verseNum}\` ${extractedText}`);
+              }
+            }
+            
+            console.log(`Found verse ${verseNum} using single verse extraction`);
+          }
+        }
+      }
+      
+      // If we still couldn't extract any verses, try another method
+      if (verses.length === 0) {
+        console.log("Trying alternative method for extracting verse range");
+        
+        // Method 2: Look for the chapter content and extract all verses from it
+        const chapterContentPattern = /<article[^>]*?class="[^"]*?bibleCitation[^"]*?"[^>]*?>([\s\S]*?)<\/article>/i;
+        const chapterMatch = html.match(chapterContentPattern);
+        
+        if (chapterMatch && chapterMatch[1]) {
+          const chapterHtml = chapterMatch[1];
+          
+          // Extract each verse by looking for verse spans
+          for (let verseNum = parseInt(startVerse); verseNum <= parseInt(endVerse); verseNum++) {
+            const paddedVerse = verseNum.toString().padStart(3, '0');
+            const verseReferenceCode = `${referenceCode.split('-')[0].substring(0, 5)}${paddedVerse}`;
+            const htmlVerseId = `v${verseReferenceCode}`;
+            
+            const versePattern = new RegExp(`<span[^>]*?class="verse"[^>]*?id="${htmlVerseId}"[^>]*?>(.*?)<\/span>\\s*(?:<span class="verse"|<\/div>)`, 's');
+            const verseMatch = chapterHtml.match(versePattern);
+            
+            if (verseMatch && verseMatch[1]) {
+              const verseText = isPsalmsVerse ? 
+                this.cleanPsalmsText(verseMatch[1]) : 
+                this.cleanHtmlFragment(verseMatch[1]);
+              
+              if (verseText.trim()) {
+                // Only include verse numbers if it's a multiple verse range
+                if (isSingleVerse || parseInt(startVerse) === parseInt(endVerse)) {
+                  // For single verse, remove any verse number that might be there
+                  verses.push(verseText.trim().replace(/^\d+\s+/, ''));
+                } else {
+                  // For multiple verses, add the verse number with backticks
+                  // First check if the text already starts with this verse number
+                  const verseNumPattern = new RegExp(`^${verseNum}\\s+`);
+                  if (verseNumPattern.test(verseText.trim())) {
+                    // Replace existing number with backtick-wrapped version
+                    verses.push(verseText.trim().replace(
+                      new RegExp(`^${verseNum}\\s+`), 
+                      `\`${verseNum}\` `
+                    ));
+                  } else {
+                    // Add the verse number with backticks since it's not already there
+                    verses.push(`\`${verseNum}\` ${verseText.trim()}`);
+                  }
+                }
+                
+                console.log(`Found verse ${verseNum} in chapter content`);
+              }
+            }
+          }
+        }
+      }
+      
+      // Combine all verses with proper spacing
+      let combinedText = verses.join(" ");
+      
+      // Fix any missing spaces (ensure space between sentences)
+      combinedText = combinedText
+        .replace(/([.,:;!?])([A-ZÀ-ÚÄ-Ü])/g, '$1 $2') // Add space between punctuation and capital letter
+        .replace(/([a-záàâãéèêíïóôõöúçñ])([A-ZÀ-ÚÄ-Ü])/g, '$1 $2'); // Add space between lowercase and uppercase letter
+      
+      // If the text is still empty, return an error
+      if (!combinedText) {
+        console.error(`Could not extract verse range ${startVerse}-${endVerse}`);
+        return {
+          text: `Could not extract verse range ${startVerse}-${endVerse}`,
+          reference: formattedReference
+        };
+      }
+      
+      return {
+        text: combinedText,
+        reference: formattedReference
+      };
+    } catch (error) {
+      console.error(`Error extracting verse range:`, error);
+      return {
+        text: `Error extracting verse range: ${error}`,
+        reference: formattedReference
+      };
     }
   }
   
@@ -407,7 +683,6 @@ class BibleService {
     let extractedText = "";
     
     // Strategy 1: Handle verse with paragraph break
-    // This is common in John/João chapter 1 and other verses with complex structure
     if (!extractedText) {
       console.log('Strategy 1: Checking for paragraph breaks');
       
@@ -465,12 +740,11 @@ class BibleService {
     }
     
     // Strategy 2: Special handling for Hebrew Scripture (Old Testament) first verses
-    // Pattern specifically designed for books like Genesis, Exodus, Leviticus, Numbers
     if (!extractedText && isFirstVerseInChapter && isHebrewScripture) {
-      console.log("Strategy 2: Hebrew Scripture first verse specific handling");
+      console.log('Strategy 2: Hebrew Scripture first verse specific handling');
       
       try {
-        // Pattern that targets the exact HTML structure seen in Hebrew Scripture first verses
+        // Different patterns for Hebrew Scripture first verses
         const hebrewFirstVersePatterns = [
           // Pattern 1: Most common Hebrew Scripture first verse pattern
           new RegExp(`<span class="verse" id="${htmlVerseId}"><span class="style-b"><span class="chapterNum"><a[^>]*?>[^<]*?</a></span>([^<]+)`, 's'),
@@ -482,7 +756,7 @@ class BibleService {
           new RegExp(`<span class="verse" id="${htmlVerseId}"><span class="style-b"><span class="chapterNum">.*?</span>([\\s\\S]*?)(?:<a class|</span>)`, 's')
         ];
         
-        // Try each pattern until one works
+        // Try each pattern in order until we find a match
         for (const pattern of hebrewFirstVersePatterns) {
           if (extractedText) break;
           
@@ -494,18 +768,16 @@ class BibleService {
           }
         }
         
-        // If none of the specific patterns worked, try a more general approach
+        // If none of the patterns worked, try a more direct approach
         if (!extractedText) {
-          // Look specifically for the content immediately after the chapter number
           const chapterNumIndex = html.indexOf(`id="${htmlVerseId}"`);
           if (chapterNumIndex > 0) {
             const verseSpanStart = html.substring(chapterNumIndex - 100, chapterNumIndex + 400);
-            const chapterEndIndex = verseSpanStart.indexOf("</span>", verseSpanStart.indexOf("<span class=\"chapterNum\">"));
+            const chapterEndIndex = verseSpanStart.indexOf('</span>', verseSpanStart.indexOf('<span class="chapterNum">'));
             
             if (chapterEndIndex > 0) {
-              // Get the text right after the chapter number closing span
               const afterChapterNum = verseSpanStart.substring(chapterEndIndex + 7, chapterEndIndex + 200);
-              const endOfVerse = afterChapterNum.indexOf("<");
+              const endOfVerse = afterChapterNum.indexOf('<');
               
               if (endOfVerse > 0) {
                 const verseText = afterChapterNum.substring(0, endOfVerse).trim();
@@ -522,20 +794,19 @@ class BibleService {
       }
     }
     
-    // Strategy 3: Direct verse element matching, including child elements to handle multi-line verses
+    // Strategy 3: Match verse span element with all child content
     if (!extractedText) {
       console.log('Strategy 3: Matching verse span element with all child content');
       
-      // This pattern will match verse spans with ID and capture ALL content inside
+      // Try to find the verse span and its content
       const verseRegex = new RegExp(`<span[^>]*?class="verse"[^>]*?id="${htmlVerseId}"[^>]*?>([\\s\\S]*?)(?:<\\/span>(?:<span class="parabreak"><\\/span>)?<\\/span>|<\\/span>\\s*<span class="verse")`, 's');
       const match = html.match(verseRegex);
       
       if (match && match[1]) {
-        // Collect all style spans in the verse content to handle multi-part verses
         const verseContent = match[1];
         const textFragments = [];
         
-        // Look for style spans in the verse content - handles complex structure in both OT and NT
+        // Try to extract style spans first - this often gives better results
         const styleSpanRegex = /<span class="style-[^"]*?">(.*?)<\/span>/gs;
         let styleMatch;
         let foundStyleSpans = false;
@@ -552,9 +823,9 @@ class BibleService {
         
         if (foundStyleSpans) {
           console.log(`Found ${textFragments.length} style spans within verse`);
-          extractedText = textFragments.join(' ');
+          extractedText = textFragments.join(" ");
         } else {
-          // If no style spans, just clean the whole content
+          // If no style spans were found, use the entire content
           extractedText = this.cleanHtmlFragment(verseContent);
         }
         
@@ -562,18 +833,15 @@ class BibleService {
       }
     }
     
-    // Strategy 4: Special handling for chapter first verse (like Matthew 1:1)
-    // This is critical for verses that have chapterNum instead of verseNum
+    // Strategy 4: Special handling for first verse in chapter
     if (!extractedText && isFirstVerseInChapter) {
       console.log('Strategy 4: First verse in chapter special handling');
       
       try {
-        // For first verses, try to capture everything from chapterNum to end of the verse span
         const firstVerseRegex = new RegExp(`<span class="verse" id="${htmlVerseId}">([\\s\\S]*?)<\\/span>(?:\\s*<span class="parabreak")|<\\/span>`, 's');
         const firstVerseMatch = html.match(firstVerseRegex);
         
         if (firstVerseMatch && firstVerseMatch[1]) {
-          // First try to extract text from any style spans within
           const styleSpanRegex = /<span class="style-[^"]*?">(.*?)<\/span>/gs;
           let styleMatch;
           const textParts = [];
@@ -588,294 +856,121 @@ class BibleService {
           }
           
           if (textParts.length > 0) {
-            extractedText = textParts.join(' ');
+            extractedText = textParts.join(" ");
             console.log(`First verse with style spans: ${extractedText.substring(0, 50)}...`);
           } else {
-            // If no style spans found, clean the entire content
             extractedText = this.cleanHtmlFragment(firstVerseMatch[1]);
             console.log(`First verse full content: ${extractedText.substring(0, 50)}...`);
           }
         }
       } catch (e) {
-        console.error("Error in first verse handling:", e);
+        console.error(`Error in first verse special handling: ${e}`);
       }
     }
     
-    // Strategy 5: Direct first verse first text extraction (for Hebrew Scripture)
-    // This method handles cases like Genesis 1:1 and Exodus 1:1
-    if (!extractedText && isFirstVerseInChapter && isHebrewScripture) {
-      console.log('Strategy 5: Direct first text extraction for Hebrew Scripture');
+    // Strategy 5: Use a simpler pattern as a fallback
+    if (!extractedText) {
+      console.log('Strategy 5: Simple pattern fallback');
       
       try {
-        // Very precise extraction targeting the text after chapterNum
-        const verseIdPos = html.indexOf(`id="${htmlVerseId}"`);
+        const simpleVerseRegex = new RegExp(`<span class="verse" id="${htmlVerseId}">(.*?)</span>`, 's');
+        const simpleMatch = html.match(simpleVerseRegex);
         
-        if (verseIdPos > 0) {
-          // Get a chunk around the verse ID
-          const start = Math.max(0, verseIdPos - 200);
-          const end = Math.min(html.length, verseIdPos + 800);
-          const chunk = html.substring(start, end);
-          
-          // Remove all HTML tags completely and split into words
-          const textOnly = chunk.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-          
-          // Split into words and remove very short words, numbers, etc.
-          const words = textOnly.split(/\s+/).filter(word => 
-            word.length > 2 && 
-            !word.match(/^\d+$/) && 
-            !['the', 'and', 'of', 'to', 'a', 'in', 'for', 'on', 'with', 'by'].includes(word.toLowerCase())
-          );
-          
-          // If we have at least 5 meaningful words, use them
-          if (words.length >= 5) {
-            // Take a reasonable chunk of words (not too many)
-            const relevantWords = words.slice(0, 20).join(' ');
-            extractedText = relevantWords;
-            console.log(`Pure text extraction: ${extractedText}`);
-          }
+        if (simpleMatch && simpleMatch[1]) {
+          extractedText = this.cleanHtmlFragment(simpleMatch[1]);
+          console.log(`Simple pattern match: ${extractedText.substring(0, 50)}...`);
         }
       } catch (e) {
-        console.error("Error in pure text extraction:", e);
+        console.error(`Error in simple pattern fallback: ${e}`);
       }
     }
     
-    // Strategy 6: For Hebrew Scriptures, try specific patterns for complex structure
-    if (!extractedText && isHebrewScripture) {
-      console.log('Strategy 6: Using specific Hebrew Scripture extraction approach');
-      
-      // For Hebrew Scriptures, look for specific patterns
-      const hebrewPatternRegex = new RegExp(`<span class="verse" id="${htmlVerseId}">.*?<span class="style-[a-z]">.*?(?:<sup class="verseNum">.*?${verse}.*?<\/sup>)?(.*?)<\/span>(?:<span class="newblock"><\/span><span class="style-[a-z]">(.*?)<\/span>)?`, 's');
-      const hebrewMatch = html.match(hebrewPatternRegex);
-      
-      if (hebrewMatch) {
-        console.log('Strategy 6: Matched Hebrew Scripture pattern');
-        const textFragments = [];
-        
-        if (hebrewMatch[1]) {
-          const cleanedText = this.cleanHtmlFragment(hebrewMatch[1]);
-          if (cleanedText.trim()) {
-            textFragments.push(cleanedText.trim());
-          }
-        }
-        
-        if (hebrewMatch[2]) {
-          const cleanedText = this.cleanHtmlFragment(hebrewMatch[2]);
-          if (cleanedText.trim()) {
-            textFragments.push(cleanedText.trim());
-          }
-        }
-        
-        if (textFragments.length > 0) {
-          extractedText = textFragments.join(' ');
-          console.log(`Extracted text: ${extractedText.substring(0, 50)}...`);
-        }
-      }
-    }
-    
-    // Strategy 7: Try to extract by verse number
+    // If all strategies failed, return an error message
     if (!extractedText) {
-      console.log('Strategy 7: Trying verse number extraction');
-      
-      // Try patterns specific to verse number formatting
-      const verseNumPatterns = [
-        // Pattern for verses with verseNum spans 
-        new RegExp(`<sup class="verseNum"><a[^>]*?>${verse}\\s*<\\/a><\\/sup>([\\s\\S]*?)(?:<\\/span>\\s*(?:<span class="newblock"><\\/span>)?<span class="style-|<sup class="verseNum")`, 's'),
-        // Simpler pattern for direct text after verse number
-        new RegExp(`<sup class="verseNum"[^>]*?>${verse}[^<]*?<\\/sup>([^<]+)`, 's')
-      ];
-      
-      for (const pattern of verseNumPatterns) {
-        if (extractedText) break;
-        
-        const match = html.match(pattern);
-        if (match && match[1]) {
-          extractedText = this.cleanHtmlFragment(match[1]);
-          console.log(`Verse number pattern matched: ${extractedText.substring(0, 50)}...`);
-        }
-      }
-    }
-    
-    // Strategy 8: Pure text extraction for OT first verse with safety checks
-    if (!extractedText && isFirstVerseInChapter && isHebrewScripture) {
-      console.log('Strategy 8: Pure text extraction for OT first verse');
-      
-      try {
-        // Very aggressive pattern that just looks for the verse ID and then extracts
-        // text after the chapter number and before the next tag
-        const htmlLower = html.toLowerCase();
-        const verseIdPos = htmlLower.indexOf(`id="${htmlVerseId.toLowerCase()}"`);
-        
-        if (verseIdPos > 0) {
-          // Get a large chunk around the verse ID
-          const start = Math.max(0, verseIdPos - 200);
-          const end = Math.min(html.length, verseIdPos + 800);
-          const chunk = html.substring(start, end);
-          
-          // Remove all HTML tags completely and split into words
-          const textOnly = chunk.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-          
-          // Split into words and remove very short words, numbers, etc.
-          const words = textOnly.split(/\s+/).filter(word => 
-            word.length > 2 && 
-            !word.match(/^\d+$/) && 
-            !['the', 'and', 'of', 'to', 'a', 'in', 'for', 'on', 'with', 'by'].includes(word.toLowerCase())
-          );
-          
-          // If we have at least 5 meaningful words, use them
-          if (words.length >= 5) {
-            // Take a reasonable chunk of words (not too many)
-            const relevantWords = words.slice(0, 20).join(' ');
-            extractedText = relevantWords;
-            console.log(`Pure text extraction: ${extractedText}`);
-          }
-        }
-      } catch (e) {
-        console.error("Error in pure text extraction:", e);
-      }
-    }
-    
-    // Strategy 9: Fuller extraction of styled content for problematic verses
-    if (!extractedText) {
-      console.log('Strategy 9: Fuller extraction of styled content');
-      
-      // Look for any span with the right ID
-      const verseSpanMatch = html.match(new RegExp(`<span[^>]*?id="${htmlVerseId}"[^>]*?>([\\s\\S]*?)<\/span>`, 's'));
-      
-      if (verseSpanMatch && verseSpanMatch[1]) {
-        // Get all spans with actual text content
-        const styleContentRegex = /<span class="style-[^"]*?">(.*?)<\/span>/gs;
-        let styleMatch;
-        const textParts = [];
-        
-        const verseContent = verseSpanMatch[1];
-        while ((styleMatch = styleContentRegex.exec(verseContent)) !== null) {
-          if (styleMatch[1]) {
-            // Filter out spans that are just markers or don't contain text
-            const trimmedContent = this.cleanHtmlFragment(styleMatch[1]).trim();
-            if (trimmedContent && !trimmedContent.match(/^\d+$/) && trimmedContent.length > 1) {
-              textParts.push(trimmedContent);
-            }
-          }
-        }
-        
-        if (textParts.length > 0) {
-          extractedText = textParts.join(' ');
-          console.log(`Fuller style extraction found: ${extractedText.substring(0, 50)}...`);
-        } else {
-          // If no style spans with content, just clean the whole verse span content
-          extractedText = this.cleanHtmlFragment(verseContent);
-          console.log(`Cleaned entire verse span: ${extractedText.substring(0, 50)}...`);
-        }
-      }
-    }
-    
-    // Strategy 10: Final fallback - extract everything from verse span
-    if (!extractedText) {
-      console.log('Strategy 10: Using fallback extraction for HTML structure variations');
-      
-      // This more aggressive approach tries to identify and extract the verse text
-      // by looking at the entire HTML around the verse ID and finding text patterns
-      
-      // Get the entire HTML surrounding the verse ID
-      const verseIdPos = html.indexOf(`id="${htmlVerseId}"`);
-      if (verseIdPos > 0) {
-        // Get a larger chunk of HTML around the verse ID for better context
-        const startPos = Math.max(0, verseIdPos - 200);
-        const endPos = Math.min(html.length, verseIdPos + 1000);
-        const verseChunk = html.substring(startPos, endPos);
-        
-        // Try to extract text between specific HTML markers for first verses
-        if (isFirstVerseInChapter) {
-          // For first verses, look for content after the chapterNum
-          const firstVersePattern = /<span class="chapterNum">.*?<\/span>\s*([^<]+)/s;
-          const firstVerseMatch = verseChunk.match(firstVersePattern);
-          
-          if (firstVerseMatch && firstVerseMatch[1]) {
-            extractedText = this.cleanHtmlFragment(firstVerseMatch[1]);
-            console.log(`Fallback first verse extraction: ${extractedText.substring(0, 50)}...`);
-          }
-        }
-        
-        // If still no text, clean everything and try to find meaningful content
-        if (!extractedText) {
-          // Clean it thoroughly, removing all HTML tags
-          let cleanedText = this.cleanHtmlFragment(verseChunk);
-          
-          // Try to find the actual verse content by looking for verse number patterns
-          const verseNumberPattern = new RegExp(`\\b${verse}\\s+([^\\d][^\\d][^\\d].+?)(?:\\b\\d{1,2}\\b|$)`, 's');
-          const verseMatch = cleanedText.match(verseNumberPattern);
-          
-          if (verseMatch && verseMatch[1]) {
-            extractedText = verseMatch[1].trim();
-            console.log(`Fallback verse number extraction: ${extractedText.substring(0, 50)}...`);
-          } else {
-            // Last resort - look for any meaningful text chunk
-            const textChunks = cleanedText.split(/\s+/).filter(chunk => 
-              chunk.length > 3 && 
-              !chunk.match(/^\d+$/) && 
-              !['chapter', 'verse', 'bible', 'book'].includes(chunk.toLowerCase())
-            );
-            
-            if (textChunks.length > 5) {
-              // If we have a reasonable amount of text, use it
-              extractedText = textChunks.join(' ');
-              console.log(`Last resort text extraction: ${extractedText.substring(0, 50)}...`);
-            }
-          }
-        }
-      }
-    }
-    
-    // If we found extracted text, return it
-    if (extractedText && extractedText.trim()) {
+      console.log('Could not extract verse with any strategy');
       return {
-        text: extractedText.trim(),
+        text: `Could not extract verse content. Please click the link to view on jw.org.`,
         reference: formattedReference
       };
     }
     
-    // If we couldn't extract anything, return an error message
-    console.error('Could not extract verse text from HTML');
     return {
-      text: "Could not extract verse text. Please check your reference or try again later.",
+      text: extractedText,
       reference: formattedReference
     };
   }
   
+  /**
+   * Clean HTML fragment and ensure proper spacing
+   */
   private cleanHtmlFragment(html: string): string {
-    if (!html) return "";
-    
-    let content = html;
-    
-    // Remove verse numbers, chapter numbers, footnotes, etc.
-    content = content.replace(/<sup class="verseNum">.*?<\/sup>/g, '');
-    content = content.replace(/<span class="chapterNum">.*?<\/span>/g, '');
-    content = content.replace(/<span class="[^\"]*?vn[^\"]*?"[^>]*?>.*?<\/span>/g, '');
-    content = content.replace(/<a class="[^\"]*?footnoteLink[^\"]*?"[^>]*?>.*?<\/a>/g, '');
-    content = content.replace(/<a class="[^\"]*?xrefLink[^\"]*?"[^>]*?>.*?<\/a>/g, '');
-    content = content.replace(/<a[^>]*?data-anchor="#[^\"]*?"[^>]*?>.*?<\/a>/g, '');
-    
-    // Special handling for parabreak and newblock spans to ensure proper spacing
-    content = content.replace(/<span class="parabreak"><\/span>/g, ' ');
-    content = content.replace(/<span class="newblock"><\/span>/g, ' ');
-    
-    // Remove all HTML tags
-    content = content.replace(/<[^>]+>/g, '');
-    
-    // Convert HTML entities and normalize whitespace
-    content = content
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&quot;/g, '"')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/\s+/g, ' ')
+    // First, remove all HTML tags
+    let plainText = html
+      .replace(/<a[^>]*?class="[^"]*?\b(?:xref|footnote)\b[^"]*?"[^>]*?>([^<]*?)<\/a>/g, '') // Remove cross-references and footnotes
+      .replace(/<a[^>]*?id="[^"]*?_crossreference[^"]*?"[^>]*?>.*?<\/a>/g, '') // Remove cross-reference elements
+      .replace(/<a[^>]*?id="[^"]*?_footnote[^"]*?"[^>]*?>.*?<\/a>/g, '') // Remove footnote elements
+      .replace(/<sup[^>]*?class="[^"]*?footnote[^"]*?"[^>]*?>.*?<\/sup>/g, '') // Remove footnote superscripts
+      .replace(/<span class="lineBreak"><br><\/span>/g, ' ') // Replace line break spans with space
+      .replace(/<[^>]+>/g, ' ') // Replace all HTML tags with spaces
+      .replace(/&nbsp;/g, ' ') // Replace non-breaking spaces
+      .replace(/\s+/g, ' ') // Replace multiple spaces with a single space
+      
+      // Fix missing spaces between sentences
+      .replace(/([.,:;!?])([A-ZÀ-ÚÄ-Ü])/g, '$1 $2') // Add space between punctuation and capital letter
+      .replace(/([a-záàâãéèêíïóôõöúçñ])([A-ZÀ-ÚÄ-Ü])/g, '$1 $2') // Add space between lowercase and uppercase letter
+      
+      // Remove footnote markers and special characters
+      .replace(/[†‡§¶*]/g, '') // Remove specific footnote symbols
+      .replace(/\s([a-z])\s/g, ' ') // Remove isolated single lowercase letters (likely footnotes)
+      .replace(/\s([a-z])(?=[.,;:!?])/g, '') // Remove single letters before punctuation
+      .replace(/\s+[eE]\s+/g, ' ') // Remove 'e' footnote markers
+      .replace(/\+/g, '') // Remove '+' symbols completely
+      .replace(/\-(?!\w)/g, '') // Remove '-' symbols that aren't part of words or numbers
+      .replace(/(?<!\w)\-/g, '') // Remove '-' symbols that aren't part of words or numbers
+      .replace(/E(?=\s|$)/g, '') // Remove 'E' at end of words or standalone
+      .replace(/\s+/g, ' ') // Clean up multiple spaces again after all replacements
       .trim();
     
-    // Check for missing spaces after punctuation
-    content = content.replace(/([,.;:!?])([A-Z])/g, '$1 $2');
-    
-    return content;
+    return plainText;
+  }
+  
+  /**
+   * Clean HTML fragments from Psalms/poetry text
+   * Special handling for poetic content with line breaks
+   */
+  private cleanPsalmsText(html: string): string {
+    // Remove footnote and cross-reference links/markers
+    let cleanedText = html
+      .replace(/<a[^>]*?class="[^"]*?\b(?:xref|footnote)\b[^"]*?"[^>]*?>([^<]*?)<\/a>/g, '') // Remove cross-references and footnotes
+      .replace(/<a[^>]*?id="[^"]*?_crossreference[^"]*?"[^>]*?>.*?<\/a>/g, '') // Remove cross-reference elements
+      .replace(/<a[^>]*?id="[^"]*?_footnote[^"]*?"[^>]*?>.*?<\/a>/g, '') // Remove footnote elements
+      .replace(/<sup[^>]*?class="[^"]*?footnote[^"]*?"[^>]*?>.*?<\/sup>/g, '') // Remove footnote superscripts
+      
+      // Convert line break spans to spaces to maintain poetry formatting
+      .replace(/<span class="lineBreak"><br><\/span>/g, ' ')
+      
+      // Remove other HTML tags
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      
+      // Fix spaces between sentences
+      .replace(/([.,:;!?])([A-ZÀ-ÚÄ-Ü])/g, '$1 $2') // Add space between punctuation and capital letter
+      .replace(/([a-záàâãéèêíïóôõöúçñ])([A-ZÀ-ÚÄ-Ü])/g, '$1 $2') // Add space between lowercase and uppercase letter
+      
+      // Remove footnote markers and clean up special characters
+      .replace(/[†‡§¶*]/g, '') // Remove specific footnote symbols
+      .replace(/\s([a-z])\s/g, ' ') // Remove isolated single lowercase letters (likely footnotes)
+      .replace(/\s([a-z])(?=[.,;:!?])/g, '') // Remove single letters before punctuation
+      .replace(/\s+[eE]\s+/g, ' ') // Remove 'e' footnote markers
+      .replace(/\+/g, '') // Remove '+' symbols
+      .replace(/\-(?!\w)/g, '') // Remove standalone hyphens
+      .replace(/(?<!\w)\-/g, '')
+      .replace(/E(?=\s|$)/g, '') // Remove E at end of words or standalone
+      .replace(/\s+/g, ' ') // Clean up spaces
+      .trim();
+      
+    return cleanedText;
   }
   
   /**
@@ -2140,9 +2235,9 @@ class JWPubSettingTab extends PluginSettingTab {
     // Verse prefix
     const versePrefixSetting = new Setting(containerEl)
       .setName('Verse Prefix')
-      .setDesc('Text to insert before the verse content (default: ")')
+      .setDesc('Text to insert before the verse content (default: "")')
       .addText(text => text
-        .setPlaceholder('"')
+        .setPlaceholder('')
         .setValue(this.plugin.settings.versePrefix)
         .onChange(async (value) => {
           this.plugin.settings.versePrefix = value;
@@ -2152,9 +2247,9 @@ class JWPubSettingTab extends PluginSettingTab {
     // Add reset button for verse prefix
     versePrefixSetting.addButton(button => button
       .setButtonText('Reset')
-      .setTooltip('Reset to default (")')
+      .setTooltip('Reset to default ("')
       .onClick(async () => {
-        this.plugin.settings.versePrefix = '"';
+        this.plugin.settings.versePrefix = '';
         await this.plugin.saveSettings();
         this.display(); // Refresh the display
       }));
@@ -2162,9 +2257,9 @@ class JWPubSettingTab extends PluginSettingTab {
     // Verse suffix
     const verseSuffixSetting = new Setting(containerEl)
       .setName('Verse Suffix')
-      .setDesc('Text to insert after the verse content (default: ")')
+      .setDesc('Text to insert after the verse content (default: "")')
       .addText(text => text
-        .setPlaceholder('"')
+        .setPlaceholder('')
         .setValue(this.plugin.settings.verseSuffix)
         .onChange(async (value) => {
           this.plugin.settings.verseSuffix = value;
@@ -2174,9 +2269,9 @@ class JWPubSettingTab extends PluginSettingTab {
     // Add reset button for verse suffix
     verseSuffixSetting.addButton(button => button
       .setButtonText('Reset')
-      .setTooltip('Reset to default (")')
+      .setTooltip('Reset to default ("')
       .onClick(async () => {
-        this.plugin.settings.verseSuffix = '"';
+        this.plugin.settings.verseSuffix = '';
         await this.plugin.saveSettings();
         this.display(); // Refresh the display
       }));
